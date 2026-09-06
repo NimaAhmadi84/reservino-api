@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { SmsService } from '../sms/sms.service';
@@ -19,6 +19,7 @@ export class OtpService {
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
     private readonly smsService: SmsService,
+    @Inject(forwardRef(() => AuthService))
     private readonly authService: AuthService,
   ) {}
 
@@ -48,21 +49,20 @@ export class OtpService {
     });
 
     if (recentRequests.length >= MAX_REQUESTS_PER_WINDOW) {
-      // ──── محاسبه زمان دقیق تا درخواست بعدی ────
       const oldestRequest = recentRequests[recentRequests.length - 1];
       const nextAllowedTime = new Date(oldestRequest.createdAt.getTime() + WINDOW_MINUTES * 60000);
       const secondsUntilNext = Math.ceil((nextAllowedTime.getTime() - Date.now()) / 1000);
-      
+
       const minutes = Math.floor(secondsUntilNext / 60);
       const seconds = secondsUntilNext % 60;
-      
+
       let timeMessage = '';
       if (minutes > 0) {
         timeMessage = `${minutes} دقیقه و ${seconds} ثانیه`;
       } else {
         timeMessage = `${seconds} ثانیه`;
       }
-      
+
       throw new BadRequestException(
         `تعداد درخواست‌های شما بیش از حد مجاز است. لطفاً ${timeMessage} دیگر دوباره تلاش کنید.`,
       );
@@ -95,7 +95,7 @@ export class OtpService {
     if (!otp) throw new BadRequestException('کدی یافت نشد. لطفاً ابتدا درخواست کد دهید.');
     if (otp.expiresAt < new Date()) throw new BadRequestException('کد منقضی شده است. لطفاً دوباره درخواست دهید.');
     if (otp.attempts >= MAX_ATTEMPTS) throw new BadRequestException('تعداد تلاش‌های ناموفق تمام شد. لطفاً دوباره درخواست کد دهید.');
-    
+
     if (otp.code !== code) {
       await this.prisma.otpCode.update({
         where: { id: otp.id },

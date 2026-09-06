@@ -17,7 +17,7 @@ const ACCESS_TOKEN_EXPIRES = 900; // 15 minutes (seconds)
 
 @Module({
   imports: [
-    UsersModule,
+    forwardRef(() => UsersModule),
     forwardRef(() => OtpModule),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
