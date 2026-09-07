@@ -5,9 +5,18 @@ import { UserRole } from '@prisma/client';
 // نام باید یک‌دست باشد: کاملاً فارسی یا کاملاً انگلیسی (ترکیبی ممنوع)
 const NAME_SCRIPT_REGEX = /^([\u0621-\u064A\u0671-\u06CC\s\u200C]+|[A-Za-z\s'-]+)$/;
 
+// ایمیل سخت‌گیرانه (RFC 5322 dot-atom + دامنه معتبر)
+const STRICT_EMAIL_REGEX =
+  /^[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$/;
+
 export class RegisterDto {
   @ApiProperty({ example: 'user@example.com', description: 'ایمیل معتبر' })
   @IsEmail({}, { message: 'ایمیل وارد شده نامعتبر است' })
+  @MaxLength(254, { message: 'ایمیل بیش از حد طولانی است (حداکثر ۲۵۴ کاراکتر)' })
+  @Matches(/^[^\s]*$/, { message: 'ایمیل نباید شامل فاصله باشد' })
+  @Matches(STRICT_EMAIL_REGEX, {
+    message: 'فرمت ایمیل معتبر نیست (مثال: you@gmail.com)',
+  })
   email!: string;
 
   @ApiProperty({ example: 'علی احمدی', description: 'نام کاربر (کاملاً فارسی یا کاملاً انگلیسی)' })
