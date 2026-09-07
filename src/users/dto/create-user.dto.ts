@@ -2,8 +2,8 @@ import { IsEmail, IsEnum, IsString, MinLength, MaxLength, Matches } from 'class-
 import { ApiProperty } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 
-// Regex نام: فقط حروف فارسی/انگلیسی، فاصله، نیم‌فاصله، خط تیره و آپوستروف
-const NAME_REGEX = /^[A-Za-z\u0621-\u064A\u0671-\u06CC][A-Za-z\u0621-\u064A\u0671-\u06CC\s\u200C'-]*$/;
+// نام باید یک‌دست باشد: کاملاً فارسی یا کاملاً انگلیسی (ترکیبی ممنوع)
+const NAME_SCRIPT_REGEX = /^([\u0621-\u064A\u0671-\u06CC\s\u200C]+|[A-Za-z\s'-]+)$/;
 
 export class CreateUserDto {
   @ApiProperty({ example: 'user@example.com' })
@@ -15,8 +15,11 @@ export class CreateUserDto {
   @MinLength(3, { message: 'نام باید حداقل ۳ کاراکتر باشد' })
   @MaxLength(60, { message: 'نام نباید بیش از ۶۰ کاراکتر باشد' })
   @Matches(/^[^\d]*$/, { message: 'نام نباید شامل عدد باشد' })
-  @Matches(NAME_REGEX, {
-    message: 'نام فقط می‌تواند شامل حروف فارسی/انگلیسی، فاصله و نیم‌فاصله باشد',
+  @Matches(/^[^!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]*$/, {
+    message: 'نام نباید شامل علامت‌های خاص (@، #، !، * و...) باشد',
+  })
+  @Matches(NAME_SCRIPT_REGEX, {
+    message: 'نام باید کاملاً فارسی یا کاملاً انگلیسی باشد (ترکیبی ممنوع)',
   })
   name!: string;
 
