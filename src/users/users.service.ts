@@ -14,6 +14,17 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { OtpService } from '../otp/otp.service';
 import * as bcrypt from 'bcryptjs';
 
+// ──── Blacklist رمزهای بسیار رایج — لایه دوم دفاع بک‌اند ────
+// توجه: قانون «شامل نبودن نام/ایمیل» به تصمیم صاحب پروژه حذف شد
+const COMMON_PASSWORD_BLACKLIST = [
+  'password', 'password1', 'password12', 'password123', 'passw0rd',
+  '12345678', '123456789', '1234567890', '123456789a', '123456789!',
+  'qwerty12', 'qwerty123', 'abc12345', 'abcd1234', 'admin123',
+  'iloveyou', 'letmein1', 'welcome1', 'welcome12', 'sunshine1',
+  'princess1', 'football1', 'baseball1', 'rezvio12', 'rezvio123',
+  'mysecretpassword', 'test1234', 'guest123', 'root1234',
+];
+
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
@@ -46,6 +57,9 @@ export class UsersService {
     return result;
   }
 
+  /**
+   * ساخت کاربر با پسورد از پیش هش شده (برای استفاده در AuthService)
+   */
   async createWithHashedPassword(dto: {
     email: string;
     name: string;
@@ -83,6 +97,10 @@ export class UsersService {
     return users;
   }
 
+  /**
+   * دریافت کاربر با ID
+   * شامل nationalId و phone برای نمایش در /users/me و صفحه پروفایل
+   */
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
@@ -144,6 +162,9 @@ export class UsersService {
     return { message: 'کاربر با موفقیت حذف شد' };
   }
 
+  /**
+   * پیدا کردن کاربر با ایمیل یا شماره
+   */
   async findByEmailOrPhone(identifier: string) {
     const isEmail = identifier.includes('@');
     if (isEmail) {
@@ -152,6 +173,9 @@ export class UsersService {
     return this.prisma.user.findUnique({ where: { phone: identifier } });
   }
 
+  /**
+   * ساخت کاربر جدید با حداقل اطلاعات (برای OTP auto-register)
+   */
   async createMinimal(data: {
     email?: string;
     phone?: string;
@@ -162,10 +186,16 @@ export class UsersService {
     return this.prisma.user.create({ data: data as any });
   }
 
+  /**
+   * آپدیت user (برای اضافه کردن password/name بعداً)
+   */
   async updateUser(id: string, data: any) {
     return this.prisma.user.update({ where: { id }, data });
   }
 
+  /**
+   * آپدیت پروفایل کاربر (فقط nationalId — یک‌بار ثبت، غیرقابل تغییر)
+   */
   async updateProfile(userId: string, dto: UpdateProfileDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
@@ -201,6 +231,9 @@ export class UsersService {
     return updated;
   }
 
+  /**
+   * تغییر نام کاربر
+   */
   async changeName(userId: string, name: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
@@ -226,6 +259,9 @@ export class UsersService {
     return updated;
   }
 
+  /**
+   * درخواست تغییر ایمیل — ارسال OTP به ایمیل جدید
+   */
   async requestEmailChange(userId: string, newEmail: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
@@ -247,6 +283,9 @@ export class UsersService {
     return { success: true, message: 'کد تایید به ایمیل جدید ارسال شد' };
   }
 
+  /**
+   * تایید تغییر ایمیل با OTP
+   */
   async confirmEmailChange(userId: string, code: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
@@ -302,6 +341,9 @@ export class UsersService {
     return updated;
   }
 
+  /**
+   * تغییر رمز عبور — قدرت رمز + blacklist (بدون قانون نام/ایمیل)
+   */
   async changePassword(
     userId: string,
     currentPassword: string,
@@ -333,6 +375,12 @@ export class UsersService {
       throw new BadRequestException('رمز جدید نباید با رمز فعلی یکسان باشد');
     }
 
+    // ──── فقط blacklist رمزهای رایج (به تصمیم صاحب پروژه) ────
+    const lowerNew = newPassword.toLowerCase();
+    if (COMMON_PASSWORD_BLACKLIST.includes(lowerNew)) {
+      throw new BadRequestException('این رمز عبور بسیار رایج است؛ یک رمز یکتا انتخاب کنید');
+    }
+
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     await this.prisma.user.update({
@@ -344,6 +392,9 @@ export class UsersService {
     return { success: true, message: 'رمز عبور با موفقیت تغییر کرد' };
   }
 
+  /**
+   * اعتبارسنجی کد ملی ایرانی (الگوریتم رسمی)
+   */
   private validateIranianNationalId(nationalId: string): boolean {
     if (!/^\d{10}$/.test(nationalId)) return false;
     if (/^(\d)\1{9}$/.test(nationalId)) return false;
