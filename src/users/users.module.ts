@@ -1,10 +1,12 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
+import { OtpModule } from '../otp/otp.module';
 
 @Module({
+  imports: [forwardRef(() => OtpModule)],
   controllers: [UsersController],
   providers: [UsersService],
-  exports: [UsersService], // مهم! برای استفاده در AuthModule
+  exports: [UsersService],
 })
 export class UsersModule {}

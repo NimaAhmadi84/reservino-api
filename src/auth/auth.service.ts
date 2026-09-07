@@ -4,6 +4,8 @@ import {
   BadRequestException,
   UnauthorizedException,
   Logger,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -24,6 +26,7 @@ export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
+    @Inject(forwardRef(() => UsersService))
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
@@ -75,8 +78,6 @@ export class AuthService {
     }
   }
 
-  // ورود با identifier (ایمیل) + password
-  // ❗ 400 به جای 401 — چون 401 باعث redirect توسط axios interceptor می‌شه
   async loginWithPassword(identifier: string, password: string): Promise<AuthResponseDto> {
     const user = await this.usersService.findByEmailOrPhone(identifier);
     if (!user || !user.password) {
@@ -89,7 +90,6 @@ export class AuthService {
     return this.generateTokens(this.toAuthUserDto(user));
   }
 
-  // Auto-login یا auto-register بعد از OTP verify
   async loginOrCreate(
     identifier: string,
     name?: string,
@@ -99,7 +99,6 @@ export class AuthService {
   ): Promise<AuthResponseDto & { isNew: boolean }> {
     const isEmail = identifier.includes('@');
     
-    // ❗ فقط ایمیل قبول می‌شه
     if (!isEmail) {
       throw new BadRequestException('در حال حاضر فقط ثبت‌نام و ورود با ایمیل امکان‌پذیر است');
     }
