@@ -177,16 +177,7 @@ export class BusinessReviewsService {
       throw new ForbiddenException('این نظر متعلق به این کسب‌وکار نیست');
     }
 
-    // بررسی اینکه کاربر خودش روی نظر خودش رأی ندهد
-    const reviewFull = await this.prisma.businessReview.findUnique({
-      where: { id: reviewId },
-      select: { userId: true },
-    });
-    if (reviewFull?.userId === userId) {
-      throw new BadRequestException('نمی‌توانید روی نظر خودتان رأی بدهید');
-    }
-
-    // پیدا کردن رأی فعلی
+        // پیدا کردن رأی فعلی
     const existing = await this.prisma.reviewVote.findUnique({
       where: { userId_reviewId: { userId, reviewId } },
     });
