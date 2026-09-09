@@ -31,25 +31,18 @@ export class BusinessReviewsService {
   async create(businessId: string, userId: string, dto: CreateReviewDto) {
     await this.ensureBusinessExists(businessId);
 
-    try {
-      return await this.prisma.businessReview.create({
-        data: {
-          businessId,
-          userId,
-          rating: dto.rating,
-          text: dto.text,
-        },
-        include: {
-          user: { select: { id: true, name: true } },
-          _count: { select: { votes: true } },
-        },
-      });
-    } catch (err: any) {
-      if (err.code === 'P2002') {
-        throw new ConflictException('شما قبلاً برای این کسب‌وکار نظر ثبت کرده‌اید');
-      }
-      throw new BadRequestException('خطا در ثبت نظر');
-    }
+    // نظر چندگانه per user مجاز است (طبق تصمیم صاحب پروژه)
+    return this.prisma.businessReview.create({
+      data: {
+        businessId,
+        userId,
+        rating: dto.rating,
+        text: dto.text,
+      },
+      include: {
+        user: { select: { id: true, name: true } },
+      },
+    });
   }
 
   /**

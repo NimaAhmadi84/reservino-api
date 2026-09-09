@@ -284,7 +284,7 @@ model BusinessReview {
   votes      ReviewVote[]
   replies    ReviewReply[]
 
-  @@unique([userId, businessId]) // یک کاربر = یک نظر per business
+  @@index([userId, businessId]) // نظر چندگانه per user مجاز است
   @@index([businessId, createdAt])
   @@index([businessId, rating])
   @@map("business_reviews")
