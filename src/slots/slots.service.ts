@@ -223,4 +223,62 @@ export class SlotsService {
     const mins = minutes % 60;
     return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
   }
+    /**
+   * پیدا کردن نزدیک‌ترین روز دارای اسلات خالی در ۶۰ روز آینده
+   * برای auto-select در فرانت‌اند استفاده می‌شود
+   */
+  async findNextAvailable(businessSlug: string, serviceId: string, staffId: string) {
+    // همان validation های getAvailableSlots
+    const business = await this.prisma.business.findUnique({
+      where: { slug: businessSlug },
+    });
+    if (!business) {
+      throw new NotFoundException('کسب‌وکار یافت نشد');
+    }
+
+    const service = await this.prisma.service.findFirst({
+      where: { id: serviceId, businessId: business.id },
+    });
+    if (!service) {
+      throw new NotFoundException('خدمت یافت نشد یا متعلق به این کسب‌وکار نیست');
+    }
+
+    const staff = await this.prisma.staff.findFirst({
+      where: { id: staffId, businessId: business.id },
+    });
+    if (!staff) {
+      throw new NotFoundException('کارمند یافت نشد یا متعلق به این کسب‌وکار نیست');
+    }
+
+    // بررسی M2M staff-service
+    const staffService = await this.prisma.staffService.findUnique({
+      where: { staffId_serviceId: { staffId, serviceId } },
+    });
+    if (!staffService) {
+      throw new BadRequestException('این کارمند این خدمت را ارائه نمی‌دهد');
+    }
+
+    const now = new Date();
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+
+    // اسکن ۶۰ روز
+    for (let offset = 0; offset < 60; offset++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() + offset);
+
+      const dateStr = date.toISOString().split('T')[0];
+      const slots = await this.getAvailableSlots(businessSlug, serviceId, staffId, dateStr);
+
+      if (slots.length > 0) {
+        return {
+          date: dateStr,
+          slotsCount: slots.length,
+          firstSlot: slots[0],
+        };
+      }
+    }
+
+    return { date: null, slotsCount: 0, firstSlot: null };
+  }
 }

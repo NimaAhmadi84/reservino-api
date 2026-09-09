@@ -1,5 +1,6 @@
-import { IsString, IsOptional, IsUUID, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsUUID, IsDateString, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { PaymentMethod } from '@prisma/client';
 
 export class CreateBookingDto {
   @ApiProperty({ description: 'شناسه کسب‌وکار', example: 'uuid' })
@@ -22,4 +23,14 @@ export class CreateBookingDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @ApiPropertyOptional({
+    description: 'روش پرداخت',
+    enum: PaymentMethod,
+    default: PaymentMethod.IN_PERSON,
+    example: 'IN_PERSON',
+  })
+  @IsEnum(PaymentMethod, { message: 'روش پرداخت نامعتبر است (IN_PERSON یا ONLINE)' })
+  @IsOptional()
+  paymentMethod?: PaymentMethod;
 }

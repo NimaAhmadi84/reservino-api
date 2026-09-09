@@ -20,6 +20,22 @@ enum BookingStatus {
   NO_SHOW
 }
 
+// ═══════════════════════════════════════════════════════════════
+// NEW: روش پرداخت رزرو
+// ═══════════════════════════════════════════════════════════════
+enum PaymentMethod {
+  IN_PERSON
+  ONLINE
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NEW: وضعیت رأی روی نظر
+// ═══════════════════════════════════════════════════════════════
+enum ReviewVoteKind {
+  LIKE
+  DISLIKE
+}
+
 model User {
   id        String   @id @default(uuid())
   email     String?   @unique
@@ -33,10 +49,12 @@ model User {
 
   ownedBusinesses Business[] @relation("BusinessOwner")
   bookings        Booking[]  @relation("CustomerBookings")
+  businessLikes   BusinessLike[]
+  reviews         BusinessReview[]
+  reviewVotes     ReviewVote[]
 
   @@map("users")
 }
-
 
 model Category {
   id        String     @id @default(uuid())
@@ -85,15 +103,23 @@ model Business {
   viewsCount   Int       @default(0)
   bookingsCount Int      @default(0)
 
+  // ═══════════════════════════════════════════════════════════════
+  // NEW: شمارنده لایک صفحه (برای نمایش سریع بدون COUNT join)
+  // ═══════════════════════════════════════════════════════════════
+  likesCount   Int       @default(0)
+
   staff          Staff[]
   services       Service[]
   bookings       Booking[]
   businessHours  BusinessHour[]
   holidays       Holiday[]
+  likes          BusinessLike[]
+  reviews        BusinessReview[]
 
   @@index([categoryId])
   @@index([viewsCount])
   @@index([bookingsCount])
+  @@index([likesCount])
   @@index([createdAt])
 
   @@map("businesses")
@@ -164,7 +190,7 @@ model BusinessHour {
   dayOfWeek  Int // 0=Saturday ... 6=Friday (Iran week)
   openTime   String // HH:MM format
   closeTime  String // HH:MM format
-  createdAt DateTime @default(now())
+  createdAt  DateTime @default(now())
 
   @@map("business_hours")
 }
@@ -194,6 +220,12 @@ model Booking {
   endTime    DateTime
   status     BookingStatus @default(PENDING)
   notes      String?
+
+  // ═══════════════════════════════════════════════════════════════
+  // NEW: روش پرداخت (IN_PERSON default برای backwards compatibility)
+  // ═══════════════════════════════════════════════════════════════
+  paymentMethod PaymentMethod @default(IN_PERSON)
+
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
 
@@ -201,9 +233,9 @@ model Booking {
   @@index([staffId, startTime])
   @@index([customerId])
   @@index([serviceId])
+  @@index([paymentMethod])
   @@map("bookings")
 }
-
 
 model OtpCode {
   id         String   @id @default(uuid())
@@ -217,4 +249,74 @@ model OtpCode {
   @@index([identifier])
   @@index([expiresAt])
   @@map("otp_codes")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NEW: لایک صفحه کسب‌وکار (یک لایک per user)
+// ═══════════════════════════════════════════════════════════════
+model BusinessLike {
+  id         String   @id @default(uuid())
+  userId     String
+  businessId String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, businessId])
+  @@index([businessId])
+  @@map("business_likes")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NEW: نظر مشتریان (با ستاره ۱-۵)
+// ═══════════════════════════════════════════════════════════════
+model BusinessReview {
+  id         String   @id @default(uuid())
+  businessId String
+  userId     String
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating     Int      // 1..5
+  text       String   @db.Text
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  votes      ReviewVote[]
+  replies    ReviewReply[]
+
+  @@unique([userId, businessId]) // یک کاربر = یک نظر per business
+  @@index([businessId, createdAt])
+  @@index([businessId, rating])
+  @@map("business_reviews")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NEW: رأی مفید / مفید نبود روی نظر (یک رأی per user per review)
+// ═══════════════════════════════════════════════════════════════
+model ReviewVote {
+  id         String         @id @default(uuid())
+  reviewId   String
+  userId     String
+  kind       ReviewVoteKind
+  review     BusinessReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime       @default(now())
+
+  @@unique([userId, reviewId])
+  @@index([reviewId])
+  @@map("review_votes")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NEW: پاسخ صاحب کسب‌وکار به نظر (یک پاسخ per review)
+// ═══════════════════════════════════════════════════════════════
+model ReviewReply {
+  id         String         @id @default(uuid())
+  reviewId   String         @unique
+  text       String         @db.Text
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  review     BusinessReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@map("review_replies")
 }

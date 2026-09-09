@@ -22,6 +22,8 @@ import { StatsModule } from './stats/stats.module';
 import { OtpModule } from './otp/otp.module';
 import { UploadModule } from './upload/upload.module';
 import { BusinessImagesModule } from './business-images/business-images.module';
+import { BusinessLikesModule } from './business-likes/business-likes.module';
+import { BusinessReviewsModule } from './business-reviews/business-reviews.module';
 
 @Module({
   imports: [
@@ -60,6 +62,8 @@ import { BusinessImagesModule } from './business-images/business-images.module';
     OtpModule,
     CategoriesModule,
     StatsModule,
+    BusinessLikesModule,
+    BusinessReviewsModule,
   ],
   controllers: [AppController],
   providers: [

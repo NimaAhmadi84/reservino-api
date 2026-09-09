@@ -33,4 +33,18 @@ export class SlotsController {
       count: slots.length,
     };
   }
+
+  @Get(':slug/next-available')
+  @ApiOperation({ summary: 'نزدیک‌ترین روز دارای اسلات خالی (۶۰ روز آینده)' })
+  @ApiResponse({ status: 200, description: 'نزدیک‌ترین روز با اسلات خالی' })
+  @ApiResponse({ status: 404, description: 'کسب‌وکار/خدمت/کارمند یافت نشد' })
+  @ApiQuery({ name: 'serviceId', required: true, description: 'شناسه خدمت' })
+  @ApiQuery({ name: 'staffId', required: true, description: 'شناسه کارمند' })
+  async getNextAvailable(
+    @Param('slug') slug: string,
+    @Query('serviceId') serviceId: string,
+    @Query('staffId') staffId: string,
+  ) {
+    return this.slotsService.findNextAvailable(slug, serviceId, staffId);
+  }
 }

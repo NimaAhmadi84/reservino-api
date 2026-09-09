@@ -12,7 +12,7 @@ import { UpdateBookingStatusDto } from './dto/update-booking-status.dto';
 import { QueryBookingsDto } from './dto/query-bookings.dto';
 import { BusinessesService } from '../businesses/businesses.service';
 import { AvailabilityService } from '../availability/availability.service';
-import { BookingStatus } from '@prisma/client';
+import { BookingStatus, PaymentMethod } from '@prisma/client';
 
 /**
  * قوانین تغییر وضعیت رزرو
@@ -191,6 +191,7 @@ export class BookingsService {
               endTime,
               notes: dto.notes,
               status: BookingStatus.PENDING,
+              paymentMethod: dto.paymentMethod ?? PaymentMethod.IN_PERSON,
             },
           });
         },
