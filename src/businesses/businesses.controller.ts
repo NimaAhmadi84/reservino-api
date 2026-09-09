@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards, UseInterceptors } from '@nestjs/common';
 import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
 import { BusinessesService } from './businesses.service';
 import { CreateBusinessDto } from './dto/create-business.dto';
 import { UpdateBusinessDto } from './dto/update-business.dto';
@@ -171,5 +171,41 @@ export class BusinessesController {
     @CurrentUser() user: AuthUserDto,
   ) {
     return this.businessesService.getCompletion(id, user.id);
+  }
+    /**
+   * آمار جامع کسب‌وکار برای داشبورد مالک
+   * (تعداد خدمت‌ها، کارمندان، رزروها، نظرات، لایک‌ها، بازدید)
+   */
+  @Get(':id/stats')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'آمار جامع کسب‌وکار برای داشبورد',
+    description:
+      'تعداد خدمت‌ها، کارمندان، رزروها، نظرات، لایک‌ها، میانگین امتیاز و بازدید.',
+  })
+  @ApiParam({ name: 'id', type: 'string' })
+  @ApiResponse({
+    status: 200,
+    description: 'آمار جامع',
+    schema: {
+      type: 'object',
+      properties: {
+        servicesCount: { type: 'number' },
+        staffCount: { type: 'number' },
+        bookingsCount: { type: 'number' },
+        reviewsCount: { type: 'number' },
+        reviewsAverage: { type: 'number' },
+        likesCount: { type: 'number' },
+        viewsCount: { type: 'number' },
+      },
+    },
+  })
+  getStats(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: AuthUserDto,
+  ) {
+    return this.businessesService.getStats(id, user.id);
   }
 }

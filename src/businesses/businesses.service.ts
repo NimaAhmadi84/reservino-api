@@ -6,6 +6,7 @@ import { CreateBusinessDto } from './dto/create-business.dto';
 import { UpdateBusinessDto } from './dto/update-business.dto';
 import { SearchBusinessesDto } from './dto/search-businesses.dto';
 
+
 @Injectable()
 export class BusinessesService {
   private readonly logger = new Logger(BusinessesService.name);
@@ -656,6 +657,64 @@ export class BusinessesService {
       businessId,
       completionPercentage,
       completionSteps: steps,
+    };
+  }
+    /**
+   * محاسبه آمار جامع برای داشبورد مالک
+   *
+   * شامل:
+   * - تعداد خدمت‌ها، کارمندان، رزروها، نظرات، لایک‌ها
+   * - میانگین امتیاز نظرات
+   * - تعداد بازدید صفحه
+   */
+  async getStats(businessId: string, userId: string) {
+    // Ownership check
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+      select: {
+        id: true,
+        ownerId: true,
+        viewsCount: true,
+        likesCount: true,
+        bookingsCount: true,
+      },
+    });
+
+    if (!business) {
+      throw new NotFoundException('کسب‌وکار یافت نشد');
+    }
+    if (business.ownerId !== userId) {
+      throw new ForbiddenException('شما مالک این کسب‌وکار نیستید');
+    }
+
+    // شمارش‌های موازی برای performance
+    const [
+      servicesCount,
+      staffCount,
+      reviewsCount,
+      reviewStats,
+    ] = await Promise.all([
+      this.prisma.service.count({ where: { businessId } }),
+      this.prisma.staff.count({ where: { businessId } }),
+      this.prisma.businessReview.count({ where: { businessId } }),
+      this.prisma.businessReview.aggregate({
+        where: { businessId },
+        _avg: { rating: true },
+      }),
+    ]);
+
+    this.logger.debug(`📊 Stats for ${businessId}: services=${servicesCount}, staff=${staffCount}, reviews=${reviewsCount}`);
+
+    return {
+      servicesCount,
+      staffCount,
+      bookingsCount: business.bookingsCount ?? 0,
+      reviewsCount,
+      reviewsAverage: reviewStats._avg.rating
+        ? Number(reviewStats._avg.rating.toFixed(2))
+        : 0,
+      likesCount: business.likesCount ?? 0,
+      viewsCount: business.viewsCount ?? 0,
     };
   }
 }
