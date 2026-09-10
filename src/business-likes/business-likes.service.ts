@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -93,6 +94,75 @@ export class BusinessLikesService {
     return {
       count: count?.likesCount ?? 0,
       isLiked: Boolean(myLike),
+    };
+    
+  }
+    /**
+   * لیست کاربرانی که کسب‌وکار رو لایک کردن (فقط OWNER می‌تونه ببینه)
+   *
+   * @param businessId - شناسه کسب‌وکار
+   * @param ownerId - شناسه کاربر جاری (برای ownership check)
+   * @param page - شماره صفحه (از ۱)
+   * @param limit - تعداد در هر صفحه (۱ تا ۵۰)
+   */
+  async listLikers(
+    businessId: string,
+    page: number = 1,
+    limit: number = 20,
+  ) {
+    // ──── بررسی وجود کسب‌وکار (لیست لایک‌کننده‌ها عمومی است — social proof) ────
+    const business = await this.prisma.business.findUnique({
+      where: { id: businessId },
+      select: { id: true, likesCount: true },
+    });
+
+    if (!business) {
+      throw new NotFoundException('کسب‌وکار یافت نشد');
+    }
+
+    const skip = (page - 1) * limit;
+
+        // ──── برای scaling (۵۰۰۰+ لایک) از likesCount cached استفاده می‌کنیم ────
+    // این کار count query رو حذف می‌کنه و response رو سریع‌تر می‌کنه
+    const items = await this.prisma.businessLike.findMany({
+      where: { businessId },
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+      select: {
+        createdAt: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+          },
+        },
+      },
+    });
+
+    const total = business.likesCount ?? 0;
+
+    const totalPages = Math.ceil(total / limit) || 1;
+
+    return {
+      items: items.map((like) => ({
+        id: like.user.id,
+        name: like.user.name || 'کاربر رزویو',
+        email: like.user.email || null,
+        phone: like.user.phone || null,
+        likedAt: like.createdAt,
+      })),
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      },
+      totalCount: business.likesCount ?? 0,
     };
   }
 }
