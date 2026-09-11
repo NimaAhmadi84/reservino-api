@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingStatusDto } from './dto/update-booking-status.dto';
 import { QueryBookingsDto } from './dto/query-bookings.dto';
+import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { BusinessesService } from '../businesses/businesses.service';
 import { AvailabilityService } from '../availability/availability.service';
 import { BookingStatus, PaymentMethod } from '@prisma/client';
@@ -630,6 +631,206 @@ export class BookingsService {
   private timeToMinutes(time: string): number {
     const [hours, minutes] = time.split(':').map(Number);
     return hours * 60 + minutes;
+  }
+
+  /**
+   * لغو رزرو با علت (فقط CUSTOMER مالک رزرو)
+   *
+   * چرا جدا از cancel؟
+   * - cancel برای owner و admin هم کاربرد داره (بدون reason)
+   * - این متد مخصوص مشتری هست که باید علت بنویسه
+   *
+   * قوانین:
+   * - فقط رزروهای PENDING یا CONFIRMED قابل لغو با reason هستن
+   * - فقط مشتری مالک رزرو می‌تونه (نه owner، نه admin)
+   * - reason سمت سرور sanitize می‌شه (حذف HTML + trim)
+   */
+  async cancelWithReason(id: string, userId: string, dto: CancelBookingDto) {
+    // ──── پیدا کردن رزرو با کسب‌وکار ────
+    const booking = await this.prisma.booking.findUnique({
+      where: { id },
+      include: {
+        business: { select: { id: true, ownerId: true } },
+      },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('رزرو یافت نشد');
+    }
+
+    // ──── اعتبارسنجی مالکیت (فقط CUSTOMER) ────
+    if (booking.customerId !== userId) {
+      throw new ForbiddenException('شما مالک این رزرو نیستید');
+    }
+
+    // ──── فقط PENDING یا CONFIRMED قابل لغو با reason ────
+    const allowedStatuses: BookingStatus[] = [
+      BookingStatus.PENDING,
+      BookingStatus.CONFIRMED,
+    ];
+    if (!allowedStatuses.includes(booking.status)) {
+      throw new BadRequestException(
+        `رزرو با وضعیت «${booking.status}» قابل لغو نیست`,
+      );
+    }
+
+    // ──── Sanitize reason (حذف تگ‌های HTML + trim) ────
+    const sanitizedReason = this.sanitizeText(dto.reason);
+
+    if (sanitizedReason.length < 10) {
+      throw new BadRequestException(
+        'علت لغو پس از پاک‌سازی کمتر از ۱۰ کاراکتر است',
+      );
+    }
+
+    // ──── محاسبه delta bookingsCount ────
+    const wasConfirmed = booking.status === BookingStatus.CONFIRMED;
+    const bookingsCountDelta = wasConfirmed ? -1 : 0;
+
+    if (wasConfirmed) {
+      this.logger.log(
+        `📉 Decrementing bookingsCount for business ${booking.businessId} (CANCEL_WITH_REASON of CONFIRMED booking)`,
+      );
+    }
+
+    // ──── لغو رزرو در transaction ────
+    return this.prisma.$transaction(async (tx) => {
+      const cancelledBooking = await tx.booking.update({
+        where: { id },
+        data: {
+          status: BookingStatus.CANCELLED,
+          cancellationReason: sanitizedReason,
+          cancelledAt: new Date(),
+        },
+      });
+
+      if (bookingsCountDelta !== 0) {
+        await tx.business.update({
+          where: { id: booking.businessId },
+          data: {
+            bookingsCount: { increment: bookingsCountDelta },
+          },
+        });
+      }
+
+      return cancelledBooking;
+    });
+  }
+
+  /**
+   * آمار درآمد تجمیعی OWNER در بازه زمانی (Phase 22 — Payment Dashboard)
+   *
+   * همه کسب‌وکارهای owner را در یک query تجمیع می‌کنیم (به‌جای حلقه در فرانت).
+   *
+   * خروجی:
+   *   - totalRevenue: درآمد کل (فقط COMPLETED)
+   *   - totalCompleted: تعداد کل رزروهای تکمیل‌شده
+   *   - businesses: تفکیک per کسب‌وکار
+   *
+   * قوانین:
+   *   - حداکثر بازه ۳۶۵ روز
+   *   - درآمد فقط از COMPLETED (قانون کسب‌وکار)
+   *   - Commission فعلاً ۰ (مدل درآمدی هنوز تصمیم نگرفته شده — §1)
+   */
+  async getOwnerIncomeStats(userId: string, query?: { from?: string; to?: string }) {
+    // ──── همه کسب‌وکارهای کاربر ────
+    const businesses = await this.prisma.business.findMany({
+      where: { ownerId: userId },
+      select: { id: true, name: true },
+    });
+
+    if (businesses.length === 0) {
+      return {
+        revenue: 0,
+        completed: 0,
+        businesses: [],
+      };
+    }
+
+    const businessIds = businesses.map((b) => b.id);
+
+    // ──── محاسبه بازه ────
+    const now = new Date();
+    const defaultFrom = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const from = query?.from ? new Date(query.from) : defaultFrom;
+    const to = query?.to ? new Date(query.to) : now;
+    to.setHours(23, 59, 59, 999);
+
+    // اعتبارسنجی بازه حداکثر ۳۶۵ روز
+    const dayDiff = Math.ceil(
+      (to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24),
+    );
+    if (dayDiff > 365) {
+      throw new BadRequestException(
+        'بازه زمانی نمی‌تواند بیش از ۳۶۵ روز باشد',
+      );
+    }
+    if (dayDiff < 0) {
+      throw new BadRequestException('تاریخ پایان باید بعد از تاریخ شروع باشد');
+    }
+
+    // ──── تجمیع per کسب‌وکار (یک query برای همه) ────
+    const perBusiness = await this.prisma.$queryRaw<
+      Array<{
+        businessId: string;
+        completed: bigint;
+        revenue: number | null;
+      }>
+    >`
+      SELECT
+        b."businessId",
+        COUNT(*) as completed,
+        COALESCE(SUM(s.price), 0) as revenue
+      FROM bookings b
+      JOIN services s ON b."serviceId" = s.id
+      WHERE b."businessId" = ANY(${businessIds})
+        AND b.status = 'COMPLETED'
+        AND b."startTime" >= ${from}
+        AND b."startTime" <= ${to}
+      GROUP BY b."businessId"
+    `;
+
+    // ──── ساخت خروجی ────
+    const perBusinessMap = new Map<string, { completed: number; revenue: number }>();
+    for (const row of perBusiness) {
+      perBusinessMap.set(row.businessId, {
+        completed: Number(row.completed),
+        revenue: Number(row.revenue ?? 0),
+      });
+    }
+
+    const businessBreakdown = businesses.map((b) => {
+      const stats = perBusinessMap.get(b.id) || { completed: 0, revenue: 0 };
+      return {
+        businessId: b.id,
+        businessName: b.name,
+        revenue: stats.revenue,
+        completed: stats.completed,
+      };
+    });
+
+    const totalRevenue = businessBreakdown.reduce((sum, b) => sum + b.revenue, 0);
+    const totalCompleted = businessBreakdown.reduce((sum, b) => sum + b.completed, 0);
+
+    this.logger.debug(
+      `💰 Owner ${userId} income stats: ${totalCompleted} completed, ${totalRevenue} Toman in ${dayDiff}-day range`,
+    );
+
+    return {
+      revenue: totalRevenue,
+      completed: totalCompleted,
+      businesses: businessBreakdown,
+    };
+  }
+
+  /**
+   * Sanitize متن — حذف تگ‌های HTML + فشرده‌سازی فضای خالی
+   * Defense in depth: علاوه بر frontend sanitize، سمت سرور هم پاکسازی می‌کنیم
+   */
+  private sanitizeText(input: string): string {
+    const noHtml = input.replace(/<[^>]*>/g, '');
+    return noHtml.replace(/\s+/g, ' ').trim();
   }
 
   /**

@@ -218,8 +218,10 @@ model Booking {
   service    Service?      @relation(fields: [serviceId], references: [id])
   startTime  DateTime
   endTime    DateTime
-  status     BookingStatus @default(PENDING)
-  notes      String?
+  status              BookingStatus @default(PENDING)
+  notes               String?
+  cancellationReason  String?       // علت لغو توسط مشتری (حداقل ۱۰ کاراکتر)
+  cancelledAt         DateTime?     // زمان لغو (برای analytics)
 
   // ═══════════════════════════════════════════════════════════════
   // NEW: روش پرداخت (IN_PERSON default برای backwards compatibility)
